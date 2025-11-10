@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blue Marine Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --marine-blue: #013a63;
+      --light-blue: #468faf;
+      --light-gray: #f1f8ff;
+    }
+    body {
+      background-color: var(--light-gray);
+      animation: fadeIn 1s ease-in;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .card {
+      border-radius: 15px;
+      transition: all 0.3s;
+    }
+    .card:hover {
+      transform: scale(1.02);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+    }
+    .btn-primary {
+      background-color: var(--marine-blue);
+      border: none;
+      transition: 0.3s;
+    }
+    .btn-primary:hover {
+      background-color: var(--light-blue);
+      transform: translateY(-2px);
+    }
+    .product-image {
+      border-radius: 12px;
+      transition: transform 0.3s;
+    }
+    .product-image:hover {
+      transform: scale(1.05);
+    }
+    .logout-btn {
+      background-color: #dc3545;
+      border: none;
+    }
+    .logout-btn:hover {
+      background-color: #ff4d4f;
+      transform: scale(1.05);
+    }
+  </style>
+</head>
+<body>
+  <div class="container py-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h2 class="text-primary fw-bold">🌊 Blue Marine Dashboard</h2>
+      <button id="logoutBtn" class="btn logout-btn text-white">Logout</button>
+    </div>
+
+    <form id="productForm" class="card p-4 shadow mb-5">
+      <h4 id="formTitle" class="text-primary mb-3">Add New Product</h4>
+      <input type="hidden" id="productId">
+      <div class="row g-3 align-items-center">
+        <div class="col-md-4">
+          <input type="text" id="name" class="form-control" placeholder="Product Name" required>
+        </div>
+        <div class="col-md-3">
+          <input type="number" id="price" class="form-control" placeholder="Price ($)" required min="0" step="0.01">
+        </div>
+        <div class="col-md-3">
+          <input type="file" id="image" class="form-control" accept="image/*">
+        </div>
+        <div class="col-md-2 d-grid">
+          <button type="submit" id="saveProductBtn" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </form>
+
+    <h4 class="text-primary mb-3">All Products</h4>
+    <div id="productList" class="row g-4"></div>
+  </div>
+
+  <script>
+    const BASE_URL = "http://localhost:5000";
+    const API_URL = `${BASE_URL}/api`;
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      alert("Please log in first!");
+      window.location.href = "login.html";
+    }
+
+    const headers = { Authorization: `Bearer ${token}` };
+
+    async function fetchProducts() {
+      const res = await fetch(`${API_URL}/products`);
+      const products = await res.json();
+      const list = document.getElementById("productList");
+      const currentUserId = localStorage.getItem("userId");
+
+      list.innerHTML = products.map(p => {
+        const isOwner = p.userId && p.userId._id === currentUserId;
+        const img = p.image ? `${BASE_URL}${p.image}` : "https://via.placeholder.com/150/013a63/f1f8ff?text=No+Image";
+        const owner = p.userId?.name || "Unknown";
+        return `
+          <div class="col-md-3">
+            <div class="card p-3 text-center">
+              <img src="${img}" class="product-image mb-2" alt="${p.name}">
+              <h6 class="text-primary fw-bold">${p.name}</h6>
+              <h5 class="text-success fw-semibold">$${p.price.toFixed(2)}</h5>
+              <p class="small text-muted mb-2">By: ${owner}</p>
+              ${isOwner ? `
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editProduct('${p._id}', '${p.name}', ${p.price})">Edit</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteProduct('${p._id}')">Delete</button>
+              ` : `<span class="text-danger small">Not editable</span>`}
+            </div>
+          </div>`;
+      }).join("");
+    }
+
+    fetchProducts();
+
+    document.getElementById("productForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const id = document.getElementById("productId").value;
+      const formData = new FormData();
+      formData.append("name", document.getElementById("name").value);
+      formData.append("price", document.getElementById("price").value);
+      if (document.getElementById("image").files[0])
+        formData.append("image", document.getElementById("image").files[0]);
+
+      const res = await fetch(id ? `${API_URL}/products/${id}` : `${API_URL}/products`, {
+        method: id ? "PUT" : "POST",
+        headers,
+        body: formData
+      });
+
+      if (res.ok) {
+        alert(`✅ Product ${id ? "updated" : "added"}!`);
+        resetForm();
+        fetchProducts();
+      } else {
+        alert("❌ Error saving product.");
+      }
+    });
+
+    function editProduct(id, name, price) {
+      document.getElementById("productId").value = id;
+      document.getElementById("name").value = name;
+      document.getElementById("price").value = price;
+      document.getElementById("formTitle").textContent = `Editing: ${name}`;
+      document.getElementById("saveProductBtn").textContent = "Update";
+    }
+
+    async function deleteProduct(id) {
+      if (!confirm("Are you sure you want to delete this product?")) return;
+      const res = await fetch(`${API_URL}/products/${id}`, { method: "DELETE", headers });
+      if (res.ok) alert("🗑️ Product deleted!");
+      fetchProducts();
+    }
+
+    function resetForm() {
+      document.getElementById("productForm").reset();
+      document.getElementById("productId").value = "";
+      document.getElementById("formTitle").textContent = "Add New Product";
+      document.getElementById("saveProductBtn").textContent = "Save";
+    }
+
+    document.getElementById("logoutBtn").addEventListener("click", () => {
+      localStorage.clear();
+      window.location.href = "login.html";
+    });
+  </script>
+</body>
+</html>
